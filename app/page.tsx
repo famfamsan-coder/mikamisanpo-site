@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import NextImage from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { Star, MapPin, Globe, Pencil, Trash2, Share2 } from "lucide-react";
+import { supabase, fromDb, toDb, uploadImage, type DbRow } from "./lib/supabase";
 
 /* ─────────────────────────────────────────────
    Types
@@ -28,7 +29,6 @@ type Phase = "cover" | "index" | "article" | "form";
 
 const SERIF_JP = "'Shippori Mincho', 'Noto Serif JP', serif";
 const SERIF_EN = "'Cormorant Garamond', serif";
-const LS_KEY   = "foodmap-v1";
 
 /* ─────────────────────────────────────────────
    Initial Data
@@ -334,6 +334,8 @@ export default function Home() {
   const [isMagazineMode, setIsMagazineMode] = useState(false);
   const [linkCopied, setLinkCopied]       = useState(false);
   const [compressing, setCompressing]     = useState(false);
+  const [submitting, setSubmitting]       = useState(false);
+  const [dbLoaded, setDbLoaded]           = useState(false);
   const [isMobile, setIsMobile]           = useState(false);
   const fileInputRef                      = useRef<HTMLInputElement>(null);
   const touchStartX                       = useRef(0);
@@ -353,20 +355,17 @@ export default function Home() {
     if (params.get("mode") === "magazine") setIsMagazineMode(true);
   }, []);
 
-  /* ── localStorage: load ── */
+  /* ── Supabase: 起動時にデータ取得 ── */
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(LS_KEY);
-      if (saved) setRestaurants(JSON.parse(saved));
-    } catch {}
+    supabase
+      .from("restaurants")
+      .select("*")
+      .order("created_at", { ascending: true })
+      .then(({ data }) => {
+        if (data && data.length > 0) setRestaurants((data as DbRow[]).map(fromDb));
+        setDbLoaded(true);
+      });
   }, []);
-
-  /* ── localStorage: save ── */
-  useEffect(() => {
-    try {
-      localStorage.setItem(LS_KEY, JSON.stringify(restaurants));
-    } catch {}
-  }, [restaurants]);
 
   const updateForm = useCallback(
     (key: keyof typeof emptyForm, value: string | number | string[]) =>
@@ -464,59 +463,42 @@ export default function Home() {
     setPhase("form");
   }, []);
 
-  const submitForm = useCallback(() => {
-    if (!form.name.trim()) return;
-    if (editingId !== null) {
-      setRestaurants((prev) =>
-        prev.map((r) =>
-          r.id === editingId
-            ? {
-                ...r,
-                name: form.name.trim(),
-                nameEn: form.nameEn.trim() || form.name.trim(),
-                category: form.category.trim() || "グルメ",
-                location: form.location.trim(),
-                rating: form.rating as number,
-                review: form.review.trim(),
-                date: form.date.trim() || r.date,
-                images: form.images.length > 0 ? form.images : r.images,
-                imageAlt: `${form.name.trim()}の料理`,
-                tagline: form.tagline.trim() || undefined,
-                mapsUrl: form.mapsUrl.trim() || undefined,
-                websiteUrl: form.websiteUrl.trim() || undefined,
-              }
-            : r
-        )
+  const submitForm = useCallback(async () => {
+    if (!form.name.trim() || submitting) return;
+    setSubmitting(true);
+    try {
+      // blob: URL を Supabase Storage にアップロードして public URL に変換
+      const finalImages = await Promise.all(
+        (form.images.length > 0 ? form.images : [`https://picsum.photos/seed/food${Date.now()}/1400/900`])
+          .map((url) => url.startsWith("blob:") ? uploadImage(url) : Promise.resolve(url))
       );
-      // return to article view of the edited entry
-      const idx = restaurants.findIndex((r) => r.id === editingId);
-      setCurrentIndex(idx >= 0 ? idx : 0);
-      setImgIdx(0);
-      setImgLoaded(false);
-      setEditingId(null);
-      setPhase("article");
-    } else {
-      const entry: Restaurant = {
-        id: Date.now(),
-        name: form.name.trim(),
-        nameEn: form.nameEn.trim() || form.name.trim(),
-        category: form.category.trim() || "グルメ",
-        location: form.location.trim(),
-        rating: form.rating as number,
-        review: form.review.trim(),
-        date: form.date.trim() || new Date().toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric" }),
-        images: form.images.length > 0 ? form.images : [`https://picsum.photos/seed/food${Date.now()}/1400/900`],
-        imageAlt: `${form.name.trim()}の料理`,
-        tagline: form.tagline.trim() || undefined,
-        mapsUrl: form.mapsUrl.trim() || undefined,
-        websiteUrl: form.websiteUrl.trim() || undefined,
-      };
-      setRestaurants((prev) => [...prev, entry]);
-      setPhase("index");
-    }
-  }, [form, editingId, restaurants]);
 
-  const deleteRestaurant = useCallback((id: number) => {
+      const dbData = { ...toDb(form as Parameters<typeof toDb>[0]), images: finalImages };
+
+      if (editingId !== null) {
+        const { error } = await supabase.from("restaurants").update(dbData).eq("id", editingId);
+        if (!error) {
+          const idx = restaurants.findIndex((r) => r.id === editingId);
+          setRestaurants((prev) => prev.map((r) => r.id === editingId ? fromDb({ ...r, ...dbData, id: editingId, created_at: "" } as DbRow) : r));
+          setCurrentIndex(idx >= 0 ? idx : 0);
+          setImgIdx(0); setImgLoaded(false);
+          setEditingId(null);
+          setPhase("article");
+        }
+      } else {
+        const { data, error } = await supabase.from("restaurants").insert([dbData]).select().single();
+        if (!error && data) {
+          setRestaurants((prev) => [...prev, fromDb(data as DbRow)]);
+          setPhase("index");
+        }
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }, [form, editingId, restaurants, submitting]);
+
+  const deleteRestaurant = useCallback(async (id: number) => {
+    await supabase.from("restaurants").delete().eq("id", id);
     setRestaurants((prev) => prev.filter((r) => r.id !== id));
     setConfirmDeleteId(null);
     setPhase("index");
@@ -1167,12 +1149,12 @@ export default function Home() {
             <footer style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "72px", borderTop: "1px solid rgba(184,146,42,0.2)", backgroundColor: "rgba(248,244,236,0.95)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 24px" }}>
               <motion.button
                 onClick={submitForm}
-                disabled={!form.name.trim()}
-                whileHover={form.name.trim() ? { scale: 1.02 } : {}}
-                whileTap={form.name.trim() ? { scale: 0.97 } : {}}
-                style={{ width: "100%", maxWidth: "360px", padding: "15px", background: form.name.trim() ? "var(--ink)" : "rgba(28,26,24,0.18)", color: "var(--cream)", border: "none", cursor: form.name.trim() ? "pointer" : "default", fontFamily: SERIF_JP, fontSize: "14px", letterSpacing: "0.25em", fontWeight: 500, transition: "background 0.25s" }}
+                disabled={!form.name.trim() || submitting}
+                whileHover={form.name.trim() && !submitting ? { scale: 1.02 } : {}}
+                whileTap={form.name.trim() && !submitting ? { scale: 0.97 } : {}}
+                style={{ width: "100%", maxWidth: "360px", padding: "15px", background: form.name.trim() && !submitting ? "var(--ink)" : "rgba(28,26,24,0.18)", color: "var(--cream)", border: "none", cursor: form.name.trim() && !submitting ? "pointer" : "default", fontFamily: SERIF_JP, fontSize: "14px", letterSpacing: "0.25em", fontWeight: 500, transition: "background 0.25s" }}
               >
-                {editingId !== null ? "変 更 を 保 存" : "記 録 す る"}
+                {submitting ? "保 存 中 …" : editingId !== null ? "変 更 を 保 存" : "記 録 す る"}
               </motion.button>
             </footer>
           </motion.div>
