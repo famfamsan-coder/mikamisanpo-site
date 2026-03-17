@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import NextImage from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { Star, MapPin, Globe, Pencil, Trash2, Share2 } from "lucide-react";
-import { supabase, fromDb, toDb, uploadImage, type DbRow } from "./lib/supabase";
+import { supabase, fromDb, toDb, uploadImage, type DbRow, type DbPayload } from "./lib/supabase";
 
 /* ─────────────────────────────────────────────
    Types
@@ -31,6 +31,16 @@ const SERIF_JP = "'Shippori Mincho', 'Noto Serif JP', serif";
 const SERIF_EN = "'Cormorant Garamond', serif";
 
 /* ─────────────────────────────────────────────
+   Date formatter  "2025-11-03" → "2025年11月3日"
+───────────────────────────────────────────── */
+function formatDate(d: string): string {
+  if (!d) return "";
+  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return `${m[1]}年${parseInt(m[2])}月${parseInt(m[3])}日`;
+  return d;
+}
+
+/* ─────────────────────────────────────────────
    Initial Data
 ───────────────────────────────────────────── */
 const initialRestaurants: Restaurant[] = [
@@ -43,7 +53,7 @@ const initialRestaurants: Restaurant[] = [
     rating: 5,
     review:
       "出汁の香りが静かに立ち込める、坪庭を望む小さな個室。季節の食材をひとつひとつ丁寧に扱った懐石は、料理人の静かな誇りを感じさせるものだった。白味噌仕立ての椀物には、京都という街の奥深さそのものが凝縮されていた。\n\n箸を置くたびに、次の一皿への期待が静かに膨らんでいく。食事とはこうあるべきだ、と思わずにはいられない夜だった。",
-    date: "2025年11月3日",
+    date: "2025-11-03",
     images: [
       "https://images.unsplash.com/photo-1547592166-23ac45744acd?w=1400&h=900&fit=crop&q=85",
       "https://images.unsplash.com/photo-1569558940588-3f2b4e2f6f07?w=1400&h=900&fit=crop&q=85",
@@ -62,7 +72,7 @@ const initialRestaurants: Restaurant[] = [
     rating: 4,
     review:
       "揚げたての串かつをソースに一度だけ潜らせ、口に運ぶ。この一連の所作の中に、大阪の粋がある。カウンター越しに大将と交わす言葉は短くても温かく、初めて訪れたはずなのに、どこか懐かしい気持ちになった。\n\nビールとの相性はもちろん言うまでもなく。締めのどて焼きで胃袋も心も満たされた、そんな夜だった。",
-    date: "2025年10月20日",
+    date: "2025-10-20",
     images: [
       "https://images.unsplash.com/photo-1544025162-d76694265947?w=1400&h=900&fit=crop&q=85",
     ],
@@ -79,7 +89,7 @@ const initialRestaurants: Restaurant[] = [
     rating: 5,
     review:
       "神戸の夜景を望む窓辺で、一皿一皿と静かに向き合う時間。地元産の素材をフレンチの技法で昇華させた料理は、どれも詩的な美しさを纏っていた。ソムリエが選んだブルゴーニュのグラスを傾けると、料理の輪郭がさらに鮮明になってゆく。\n\n食事全体が、ひとつの美しい物語のようだった。神戸という港町の夜に、こんな場所があることを誰かに伝えたくなった。",
-    date: "2025年9月15日",
+    date: "2025-09-15",
     images: [
       "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1400&h=900&fit=crop&q=85",
       "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=1400&h=900&fit=crop&q=85",
@@ -335,6 +345,7 @@ export default function Home() {
   const [linkCopied, setLinkCopied]       = useState(false);
   const [compressing, setCompressing]     = useState(false);
   const [submitting, setSubmitting]       = useState(false);
+  const [saveError, setSaveError]         = useState<string | null>(null);
   const [dbLoaded, setDbLoaded]           = useState(false);
   const [isMobile, setIsMobile]           = useState(false);
   const fileInputRef                      = useRef<HTMLInputElement>(null);
@@ -361,8 +372,12 @@ export default function Home() {
       .from("restaurants")
       .select("*")
       .order("created_at", { ascending: true })
-      .then(({ data }) => {
-        if (data && data.length > 0) setRestaurants((data as DbRow[]).map(fromDb));
+      .then(({ data, error }) => {
+        if (error) {
+          console.error("[Supabase SELECT] データ取得失敗:", error);
+        } else if (data && data.length > 0) {
+          setRestaurants((data as DbRow[]).map(fromDb));
+        }
         setDbLoaded(true);
       });
   }, []);
@@ -441,6 +456,7 @@ export default function Home() {
     setForm({ ...emptyForm, images: [] });
     setUrlInput("");
     setEditingId(null);
+    setSaveError(null);
     setPhase("form");
   }, []);
 
@@ -466,39 +482,94 @@ export default function Home() {
   const submitForm = useCallback(async () => {
     if (!form.name.trim() || submitting) return;
     setSubmitting(true);
+    setSaveError(null);
     try {
-      // blob: URL を Supabase Storage にアップロードして public URL に変換
-      const finalImages = await Promise.all(
-        (form.images.length > 0 ? form.images : [`https://picsum.photos/seed/food${Date.now()}/1400/900`])
-          .map((url) => url.startsWith("blob:") ? uploadImage(url) : Promise.resolve(url))
-      );
+      // ── 画像処理（blob: のみアップロード。失敗時は null で続行）──
+      let finalImageUrl: string | null = null;
+      if (form.images.length > 0) {
+        const src = form.images[0];
+        if (src.startsWith("blob:")) {
+          finalImageUrl = await uploadImage(src);
+          if (!finalImageUrl) console.warn("[submit] 画像アップロード失敗 — image_url = null で保存継続");
+        } else {
+          finalImageUrl = src;
+        }
+        form.images.slice(1).forEach((u) => { if (u.startsWith("blob:")) URL.revokeObjectURL(u); });
+      }
 
-      const dbData = { ...toDb(form as Parameters<typeof toDb>[0]), images: finalImages };
+      // ── restaurants テーブルの実カラムのみ厳密に組み立てる ──
+      const dbData: DbPayload = {
+        ...toDb(form),       // name, rating, comment, visit_date
+        image_url: finalImageUrl,
+      };
+
+      // 送信前に型・キーを必ず確認
+      console.log("[insert] 送信データ:", JSON.stringify(dbData));
+
+      // ── エラー詳細を整形して返す helper ──
+      const formatError = (e: { message?: string; details?: string; hint?: string; code?: string }) =>
+        [e.message, e.details && `details: ${e.details}`, e.hint && `hint: ${e.hint}`, e.code && `code: ${e.code}`]
+          .filter(Boolean).join(" / ");
 
       if (editingId !== null) {
-        const { error } = await supabase.from("restaurants").update(dbData).eq("id", editingId);
-        if (!error) {
+        // ── UPDATE ──
+        const { data, error } = await supabase
+          .from("restaurants")
+          .update(dbData)
+          .eq("id", editingId)
+          .select()
+          .single();
+        if (error) {
+          console.error("[update] 失敗 raw:", JSON.stringify(error));
+          setSaveError(`更新失敗: ${formatError(error)}`);
+        } else if (data) {
+          console.log("[update] 成功");
           const idx = restaurants.findIndex((r) => r.id === editingId);
-          setRestaurants((prev) => prev.map((r) => r.id === editingId ? fromDb({ ...r, ...dbData, id: editingId, created_at: "" } as DbRow) : r));
+          setRestaurants((prev) => prev.map((r) => r.id === editingId ? fromDb(data as DbRow) : r));
           setCurrentIndex(idx >= 0 ? idx : 0);
           setImgIdx(0); setImgLoaded(false);
           setEditingId(null);
           setPhase("article");
+        } else {
+          const msg = "UPDATE後のSELECTが空 — RLS SELECTポリシーを確認";
+          console.warn("[update]", msg);
+          setSaveError(msg);
         }
       } else {
-        const { data, error } = await supabase.from("restaurants").insert([dbData]).select().single();
-        if (!error && data) {
+        // ── INSERT ──
+        const { data, error } = await supabase
+          .from("restaurants")
+          .insert([dbData])
+          .select()
+          .single();
+        if (error) {
+          console.error("[insert] 失敗 raw:", JSON.stringify(error));
+          setSaveError(`保存失敗: ${formatError(error)}`);
+        } else if (data) {
+          console.log("[insert] 成功:", data);
           setRestaurants((prev) => [...prev, fromDb(data as DbRow)]);
           setPhase("index");
+        } else {
+          const msg = "INSERT後のSELECTが空 — RLS SELECTポリシーを確認";
+          console.warn("[insert]", msg);
+          setSaveError(msg);
         }
       }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[submit] 予期しない例外:", e);
+      setSaveError(`予期しないエラー: ${msg}`);
     } finally {
       setSubmitting(false);
     }
   }, [form, editingId, restaurants, submitting]);
 
   const deleteRestaurant = useCallback(async (id: number) => {
-    await supabase.from("restaurants").delete().eq("id", id);
+    const { error } = await supabase.from("restaurants").delete().eq("id", id);
+    if (error) {
+      console.error("[Supabase DELETE] 削除失敗:", error);
+      return;
+    }
     setRestaurants((prev) => prev.filter((r) => r.id !== id));
     setConfirmDeleteId(null);
     setPhase("index");
@@ -666,8 +737,14 @@ export default function Home() {
                     >
                       {/* Photo */}
                       <div style={{ position: "relative", aspectRatio: "2/3", width: "100%", overflow: "hidden" }}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={r.images[0]} alt={r.imageAlt} style={{ objectFit: "cover", width: "100%", height: "100%", display: "block" }} />
+                        {r.images[0] ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={r.images[0]} alt={r.imageAlt} style={{ objectFit: "cover", width: "100%", height: "100%", display: "block" }} />
+                        ) : (
+                          <div style={{ width: "100%", height: "100%", background: "rgba(184,146,42,0.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "11px", letterSpacing: "0.2em", color: "rgba(184,146,42,0.4)" }}>no photo</span>
+                          </div>
+                        )}
                         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 55%, rgba(28,26,24,0.72))" }} />
                         <div style={{ position: "absolute", top: "8px", left: "8px", padding: "2px 7px", background: "rgba(248,244,236,0.92)", border: "1px solid rgba(184,146,42,0.4)" }}>
                           <span style={{ fontFamily: SERIF_JP, fontSize: "10px", letterSpacing: "0.15em", color: "var(--gold)" }}>{r.category}</span>
@@ -687,7 +764,7 @@ export default function Home() {
                       <div style={{ padding: "10px 11px 8px", borderTop: "1px solid rgba(184,146,42,0.15)" }}>
                         <p style={{ fontFamily: SERIF_EN, fontStyle: "italic", fontSize: "10px", letterSpacing: "0.08em", color: "var(--gold)", marginBottom: "3px", opacity: 0.85, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{r.nameEn}</p>
                         <p style={{ fontFamily: SERIF_JP, fontSize: "13px", letterSpacing: "0.06em", color: "var(--ink)", fontWeight: 500, lineHeight: 1.35, marginBottom: "4px", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{r.name}</p>
-                        <p style={{ fontFamily: SERIF_EN, fontSize: "10px", color: "var(--ink)", opacity: 0.35, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{[r.location, r.date].filter(Boolean).join(" · ")}</p>
+                        <p style={{ fontFamily: SERIF_EN, fontSize: "10px", color: "var(--ink)", opacity: 0.35, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{[r.location, formatDate(r.date)].filter(Boolean).join(" · ")}</p>
                       </div>
                     </motion.button>
 
@@ -824,15 +901,17 @@ export default function Home() {
                     /* ══════ MOBILE ══════ */
                     <>
                       <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
-                        {!imgLoaded && <div className="photo-placeholder" style={{ position: "absolute", inset: 0 }} />}
-                        <FlexImage
-                          src={restaurant.images[imgIdx] ?? restaurant.images[0]}
-                          alt={restaurant.imageAlt}
-                          className="object-cover"
-                          style={{ transition: "opacity 0.4s ease", opacity: imgLoaded ? 1 : 0 }}
-                          onLoad={() => setImgLoaded(true)}
-                          priority
-                        />
+                        <div className="photo-placeholder" style={{ position: "absolute", inset: 0 }} />
+                        {(restaurant.images[imgIdx] ?? restaurant.images[0]) && (
+                          <FlexImage
+                            src={restaurant.images[imgIdx] ?? restaurant.images[0]}
+                            alt={restaurant.imageAlt}
+                            className="object-cover"
+                            style={{ transition: "opacity 0.4s ease", opacity: imgLoaded ? 1 : 0 }}
+                            onLoad={() => setImgLoaded(true)}
+                            priority
+                          />
+                        )}
                         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to left, rgba(16,14,12,0.82) 0%, rgba(16,14,12,0.50) 45%, rgba(16,14,12,0.62) 100%)" }} />
                       </div>
 
@@ -867,7 +946,7 @@ export default function Home() {
                         <div style={{ writingMode: "vertical-rl", textOrientation: "mixed", flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
                           <span style={{ fontFamily: SERIF_JP, fontSize: "12px", lineHeight: 2.0, letterSpacing: "0.06em", color: "rgba(240,234,222,0.82)", flex: 1, overflow: "hidden" }}>{restaurant.review.split("\n\n")[0]}</span>
                           <span style={{ fontFamily: SERIF_EN, fontStyle: "italic", fontSize: "10px", letterSpacing: "0.12em", color: "rgba(248,244,236,0.38)", marginTop: "14px", flexShrink: 0 }}>{restaurant.location}</span>
-                          <span style={{ fontFamily: SERIF_JP, fontSize: "10px", letterSpacing: "0.15em", color: "rgba(248,244,236,0.32)", marginTop: "10px", flexShrink: 0 }}>{restaurant.date}</span>
+                          <span style={{ fontFamily: SERIF_JP, fontSize: "10px", letterSpacing: "0.15em", color: "rgba(248,244,236,0.32)", marginTop: "10px", flexShrink: 0 }}>{formatDate(restaurant.date)}</span>
                         </div>
                       </div>
 
@@ -880,15 +959,17 @@ export default function Home() {
                     <>
                       {/* Left 58%: Photo */}
                       <div style={{ position: "relative", flexShrink: 0, width: "58%", height: "100%", overflow: "hidden" }}>
-                        {!imgLoaded && <div className="photo-placeholder" style={{ position: "absolute", inset: 0 }} />}
-                        <FlexImage
-                          src={restaurant.images[imgIdx] ?? restaurant.images[0]}
-                          alt={restaurant.imageAlt}
-                          className="object-cover"
-                          style={{ transition: "opacity 0.4s ease", opacity: imgLoaded ? 1 : 0 }}
-                          onLoad={() => setImgLoaded(true)}
-                          priority
-                        />
+                        <div className="photo-placeholder" style={{ position: "absolute", inset: 0 }} />
+                        {(restaurant.images[imgIdx] ?? restaurant.images[0]) && (
+                          <FlexImage
+                            src={restaurant.images[imgIdx] ?? restaurant.images[0]}
+                            alt={restaurant.imageAlt}
+                            className="object-cover"
+                            style={{ transition: "opacity 0.4s ease", opacity: imgLoaded ? 1 : 0 }}
+                            onLoad={() => setImgLoaded(true)}
+                            priority
+                          />
+                        )}
                         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, rgba(16,14,12,0.06) 0%, transparent 35%, rgba(16,14,12,0.75) 75%, rgba(16,14,12,0.90) 100%)" }} />
 
                         <div style={{ position: "absolute", top: "24px", left: "24px", padding: "4px 11px", background: "rgba(248,244,236,0.1)", backdropFilter: "blur(6px)", border: "1px solid rgba(184,146,42,0.5)", zIndex: 2 }}>
@@ -944,7 +1025,7 @@ export default function Home() {
                           <div style={{ marginTop: "auto", paddingTop: "16px", borderTop: "1px solid rgba(184,146,42,0.2)" }}>
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
                               <StoreLinks mapsUrl={restaurant.mapsUrl} websiteUrl={restaurant.websiteUrl} />
-                              <span style={{ fontFamily: SERIF_JP, fontSize: "12px", letterSpacing: "0.15em", color: "var(--ink)", opacity: 0.4 }}>{restaurant.date}</span>
+                              <span style={{ fontFamily: SERIF_JP, fontSize: "12px", letterSpacing: "0.15em", color: "var(--ink)", opacity: 0.4 }}>{formatDate(restaurant.date)}</span>
                             </div>
                           </div>
                         </div>
@@ -1040,7 +1121,7 @@ export default function Home() {
               </FormField>
 
               <FormField label="訪問日">
-                <input type="text" value={form.date} onChange={(e) => updateForm("date", e.target.value)} placeholder="例：2025年11月3日" className="form-input" style={{ fontFamily: SERIF_JP }} />
+                <input type="date" value={form.date} onChange={(e) => updateForm("date", e.target.value)} className="form-input" style={{ fontFamily: SERIF_JP }} />
               </FormField>
 
               <FormField label="感想・レビュー">
@@ -1146,7 +1227,12 @@ export default function Home() {
             </div>
 
             {/* Submit */}
-            <footer style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "72px", borderTop: "1px solid rgba(184,146,42,0.2)", backgroundColor: "rgba(248,244,236,0.95)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 24px" }}>
+            <footer style={{ position: "absolute", bottom: 0, left: 0, right: 0, borderTop: "1px solid rgba(184,146,42,0.2)", backgroundColor: "rgba(248,244,236,0.95)", backdropFilter: "blur(8px)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "12px 24px", gap: "8px" }}>
+              {saveError && (
+                <div style={{ width: "100%", maxWidth: "360px", padding: "8px 12px", background: "rgba(180,30,30,0.08)", border: "1px solid rgba(180,30,30,0.35)", color: "#b01e1e", fontFamily: "monospace", fontSize: "11px", lineHeight: 1.5, wordBreak: "break-all" }}>
+                  ⚠ {saveError}
+                </div>
+              )}
               <motion.button
                 onClick={submitForm}
                 disabled={!form.name.trim() || submitting}
