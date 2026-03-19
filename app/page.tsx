@@ -4,13 +4,13 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import NextImage from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { Star, MapPin, Globe, Pencil, Trash2, Share2 } from "lucide-react";
-import { supabase, fromDb, toDb, uploadImage, type DbRow, type DbPayload } from "./lib/supabase";
+import { supabase, fromDb, toDb, uploadImage, type DbRow } from "./lib/supabase";
 
 /* ─────────────────────────────────────────────
    Types
 ───────────────────────────────────────────── */
 interface Restaurant {
-  id: number;
+  id: string;
   name: string;
   nameEn: string;
   category: string;
@@ -45,7 +45,7 @@ function formatDate(d: string): string {
 ───────────────────────────────────────────── */
 const initialRestaurants: Restaurant[] = [
   {
-    id: 1,
+    id: "1",
     name: "割烹 三木屋",
     nameEn: "Kappo Mikiya",
     category: "京料理",
@@ -64,7 +64,7 @@ const initialRestaurants: Restaurant[] = [
     websiteUrl: "https://example.com/kappo-mikiya",
   },
   {
-    id: 2,
+    id: "2",
     name: "串かつ 浪速亭",
     nameEn: "Kushikatsu Naniwa-tei",
     category: "大阪料理",
@@ -81,7 +81,7 @@ const initialRestaurants: Restaurant[] = [
     mapsUrl: "https://www.google.com/maps/search/串かつ+浪速亭+大阪市浪速区",
   },
   {
-    id: 3,
+    id: "3",
     name: "Les Rosées",
     nameEn: "Les Rosées",
     category: "フレンチ",
@@ -337,8 +337,8 @@ export default function Home() {
   const [imgLoaded, setImgLoaded]         = useState(false);
   const [imgIdx, setImgIdx]               = useState(0);
   const [form, setForm]                   = useState(emptyForm);
-  const [editingId, setEditingId]         = useState<number | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [editingId, setEditingId]         = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [urlInput, setUrlInput]           = useState("");
   const [gpsLoading, setGpsLoading]       = useState(false);
   const [isMagazineMode, setIsMagazineMode] = useState(false);
@@ -497,33 +497,37 @@ export default function Home() {
         form.images.slice(1).forEach((u) => { if (u.startsWith("blob:")) URL.revokeObjectURL(u); });
       }
 
-      // ── restaurants テーブルの実カラムのみ厳密に組み立てる ──
-      const dbData: DbPayload = {
-        ...toDb(form),       // name, rating, comment, visit_date
-        image_url: finalImageUrl,
-      };
-
-      // 送信前に型・キーを必ず確認
-      console.log("[insert] 送信データ:", JSON.stringify(dbData));
-
       // ── エラー詳細を整形して返す helper ──
       const formatError = (e: { message?: string; details?: string; hint?: string; code?: string }) =>
         [e.message, e.details && `details: ${e.details}`, e.hint && `hint: ${e.hint}`, e.code && `code: ${e.code}`]
           .filter(Boolean).join(" / ");
 
-      if (editingId !== null) {
-        // ── UPDATE ──
-        const { data, error } = await supabase
-          .from("restaurants")
-          .update(dbData)
-          .eq("id", editingId)
-          .select()
-          .single();
-        if (error) {
-          console.error("[update] 失敗 raw:", JSON.stringify(error));
-          setSaveError(`更新失敗: ${formatError(error)}`);
-        } else if (data) {
-          console.log("[update] 成功");
+      // ── ID確定：編集時はそのID、新規はUUID生成 ──
+      const isEditing = editingId !== null;
+      const id = editingId ?? crypto.randomUUID();
+
+      // ── UPSERT ペイロード組み立て（id を含む） ──
+      const upsertPayload = {
+        id,
+        ...toDb(form),
+        image_url: finalImageUrl,
+      };
+
+      console.log("[upsert] 送信データ:", JSON.stringify(upsertPayload));
+
+      // ── UPSERT（IDが存在すれば UPDATE、なければ INSERT） ──
+      const { data, error } = await supabase
+        .from("restaurants")
+        .upsert([upsertPayload], { onConflict: "id" })
+        .select()
+        .single();
+
+      if (error) {
+        console.error("[upsert] 失敗:", JSON.stringify(error));
+        setSaveError(`保存失敗: ${formatError(error)}`);
+      } else if (data) {
+        console.log("[upsert] 成功:", data);
+        if (isEditing) {
           const idx = restaurants.findIndex((r) => r.id === editingId);
           setRestaurants((prev) => prev.map((r) => r.id === editingId ? fromDb(data as DbRow) : r));
           setCurrentIndex(idx >= 0 ? idx : 0);
@@ -531,29 +535,13 @@ export default function Home() {
           setEditingId(null);
           setPhase("article");
         } else {
-          const msg = "UPDATE後のSELECTが空 — RLS SELECTポリシーを確認";
-          console.warn("[update]", msg);
-          setSaveError(msg);
-        }
-      } else {
-        // ── INSERT ──
-        const { data, error } = await supabase
-          .from("restaurants")
-          .insert([dbData])
-          .select()
-          .single();
-        if (error) {
-          console.error("[insert] 失敗 raw:", JSON.stringify(error));
-          setSaveError(`保存失敗: ${formatError(error)}`);
-        } else if (data) {
-          console.log("[insert] 成功:", data);
           setRestaurants((prev) => [...prev, fromDb(data as DbRow)]);
           setPhase("index");
-        } else {
-          const msg = "INSERT後のSELECTが空 — RLS SELECTポリシーを確認";
-          console.warn("[insert]", msg);
-          setSaveError(msg);
         }
+      } else {
+        const msg = "UPSERT後のSELECTが空 — RLS SELECTポリシーを確認";
+        console.warn("[upsert]", msg);
+        setSaveError(msg);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -564,7 +552,7 @@ export default function Home() {
     }
   }, [form, editingId, restaurants, submitting]);
 
-  const deleteRestaurant = useCallback(async (id: number) => {
+  const deleteRestaurant = useCallback(async (id: string) => {
     const { error } = await supabase.from("restaurants").delete().eq("id", id);
     if (error) {
       console.error("[Supabase DELETE] 削除失敗:", error);
