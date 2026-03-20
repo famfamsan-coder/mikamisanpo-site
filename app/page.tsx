@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import NextImage from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { Star, MapPin, Globe, Pencil, Trash2, Share2 } from "lucide-react";
-import { supabase, fromDb, toDb, uploadImage, type DbRow } from "./lib/supabase";
+import { supabase, fromDb, toDb, uploadImages, type DbRow } from "./lib/supabase";
 
 /* ─────────────────────────────────────────────
    Types
@@ -484,17 +484,10 @@ export default function Home() {
     setSubmitting(true);
     setSaveError(null);
     try {
-      // ── 画像処理（blob: のみアップロード。失敗時は null で続行）──
-      let finalImageUrl: string | null = null;
-      if (form.images.length > 0) {
-        const src = form.images[0];
-        if (src.startsWith("blob:")) {
-          finalImageUrl = await uploadImage(src);
-          if (!finalImageUrl) console.warn("[submit] 画像アップロード失敗 — image_url = null で保存継続");
-        } else {
-          finalImageUrl = src;
-        }
-        form.images.slice(1).forEach((u) => { if (u.startsWith("blob:")) URL.revokeObjectURL(u); });
+      // ── 画像処理（複数対応。blob: のみアップロード。失敗時はスキップ）──
+      const { imageUrl: finalImageUrl, extraImages } = await uploadImages(form.images);
+      if (form.images.length > 0 && !finalImageUrl && extraImages.length === 0) {
+        console.warn("[submit] 全画像アップロード失敗 — image_url = null で保存継続");
       }
 
       // ── エラー詳細を整形して返す helper ──
@@ -511,6 +504,7 @@ export default function Home() {
         id,
         ...toDb(form),
         image_url: finalImageUrl,
+        extra_images: extraImages,
       };
 
       console.log("[upsert] 送信データ:", JSON.stringify(upsertPayload));
@@ -1113,7 +1107,7 @@ export default function Home() {
               </FormField>
 
               <FormField label="感想・レビュー">
-                <textarea value={form.review} onChange={(e) => updateForm("review", e.target.value)} placeholder="食の記憶を、言葉に。" rows={5} className="form-input form-textarea" style={{ fontFamily: SERIF_JP, resize: "none", display: "block" }} />
+                <textarea value={form.review} onChange={(e) => updateForm("review", e.target.value)} placeholder="食の記憶を、言葉に。" rows={10} className="form-input form-textarea" style={{ fontFamily: SERIF_JP, resize: "vertical", display: "block" }} />
               </FormField>
 
               <FormField label="キャッチコピー（縦書き）">

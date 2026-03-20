@@ -18,6 +18,7 @@ export interface DbRow {
   rating: number;
   comment: string;
   image_url: string | null;
+  extra_images: string[] | null;
   visit_date: string | null;
   tagline: string | null;
   maps_url: string | null;
@@ -36,7 +37,10 @@ export function fromDb(row: DbRow) {
     rating: row.rating ?? 5,
     review: row.comment ?? "",
     date: row.visit_date ?? "",
-    images: row.image_url ? [row.image_url] : [],
+    images: [
+      ...(row.image_url ? [row.image_url] : []),
+      ...(row.extra_images ?? []),
+    ],
     imageAlt: `${row.name}の料理`,
     tagline: row.tagline ?? undefined,
     mapsUrl: row.maps_url ?? undefined,
@@ -74,17 +78,37 @@ export function toDb(form: {
 
 /* ─── INSERT / UPDATE で送る完全な DB ペイロード型 ─── */
 export interface DbPayload {
-  name:        string;
-  name_en:     string | null;
-  category:    string | null;
-  location:    string | null;
-  rating:      number;
-  comment:     string;
-  image_url:   string | null;
-  visit_date:  string | null;
-  tagline:     string | null;
-  maps_url:    string | null;
-  website_url: string | null;
+  name:          string;
+  name_en:       string | null;
+  category:      string | null;
+  location:      string | null;
+  rating:        number;
+  comment:       string;
+  image_url:     string | null;
+  extra_images:  string[];
+  visit_date:    string | null;
+  tagline:       string | null;
+  maps_url:      string | null;
+  website_url:   string | null;
+}
+
+/* ─── 複数の画像URLリストをアップロード → [image_url, extra_images] を返す ─── */
+export async function uploadImages(
+  srcs: string[]
+): Promise<{ imageUrl: string | null; extraImages: string[] }> {
+  const uploaded: string[] = [];
+  for (const src of srcs) {
+    if (src.startsWith("blob:")) {
+      const url = await uploadImage(src);
+      if (url) uploaded.push(url);
+    } else {
+      uploaded.push(src);
+    }
+  }
+  return {
+    imageUrl: uploaded[0] ?? null,
+    extraImages: uploaded.slice(1),
+  };
 }
 
 /* ─── Blob URL → Supabase Storage にアップロード → public URL を返す ─── */
