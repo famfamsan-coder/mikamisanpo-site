@@ -897,12 +897,12 @@ export default function Home() {
                         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to left, rgba(16,14,12,0.82) 0%, rgba(16,14,12,0.50) 45%, rgba(16,14,12,0.62) 100%)" }} />
                       </div>
 
-                      <div style={{ position: "absolute", top: "14px", left: "14px", padding: "3px 9px", background: "rgba(248,244,236,0.12)", backdropFilter: "blur(6px)", border: "1px solid rgba(184,146,42,0.5)", zIndex: 3 }}>
+                      <div style={{ position: "absolute", top: "14px", right: "14px", padding: "3px 9px", background: "rgba(248,244,236,0.12)", backdropFilter: "blur(6px)", border: "1px solid rgba(184,146,42,0.5)", zIndex: 3 }}>
                         <span style={{ fontFamily: SERIF_JP, fontSize: "10px", letterSpacing: "0.2em", color: "var(--gold)" }}>{restaurant.category}</span>
                       </div>
 
                       {restaurant.images.length > 1 && (
-                        <div style={{ position: "absolute", top: "46px", left: "14px", display: "flex", gap: "5px", zIndex: 3 }}>
+                        <div style={{ position: "absolute", top: "46px", right: "14px", display: "flex", gap: "5px", zIndex: 3 }}>
                           {restaurant.images.map((_, i) => (
                             <button key={i} onClick={() => { setImgLoaded(false); setImgIdx(i); }}
                               style={{ width: i === imgIdx ? "16px" : "6px", height: "6px", borderRadius: "9999px", background: i === imgIdx ? "var(--gold)" : "rgba(248,244,236,0.4)", border: "none", cursor: "pointer", padding: 0, transition: "width 0.3s, background 0.3s" }}
@@ -914,14 +914,14 @@ export default function Home() {
 
                       {/* 縦書きコンテンツ */}
                       <div style={{ position: "absolute", inset: 0, padding: "20px 18px", display: "flex", flexDirection: "row-reverse", alignItems: "stretch", overflow: "hidden", zIndex: 2 }}>
-                        <div style={{ writingMode: "vertical-rl", textOrientation: "mixed", flexShrink: 0, display: "flex", flexDirection: "column", justifyContent: "center", paddingLeft: "4px" }}>
+                        <div style={{ writingMode: "vertical-rl", textOrientation: "mixed", flexShrink: 0, display: "flex", flexDirection: "column", justifyContent: "center", paddingLeft: "4px", paddingTop: "36px" }}>
                           <span style={{ fontFamily: SERIF_EN, fontStyle: "italic", fontSize: "10px", letterSpacing: "0.18em", color: "rgba(184,146,42,0.8)", marginBottom: "10px" }}>{restaurant.nameEn}</span>
                           <span style={{ fontFamily: SERIF_JP, fontSize: "clamp(1.65rem, 6.5vw, 2.1rem)", fontWeight: 500, letterSpacing: "0.18em", lineHeight: 1.0, color: "rgba(255,252,244,0.96)" }}>{restaurant.name}</span>
                         </div>
                         <div style={{ flexShrink: 0, width: "1px", margin: "12px 14px", background: "linear-gradient(to bottom, transparent, rgba(184,146,42,0.6) 20%, rgba(184,146,42,0.6) 80%, transparent)" }} />
                         <div style={{ writingMode: "vertical-rl", textOrientation: "mixed", flexShrink: 0, display: "flex", flexDirection: "column", gap: "14px", paddingRight: "2px", justifyContent: "center" }}>
                           <span style={{ fontFamily: SERIF_JP, fontSize: "11px", letterSpacing: "0.25em", color: "rgba(184,146,42,0.85)" }}>{restaurant.category}</span>
-                          <span style={{ fontFamily: SERIF_JP, fontSize: "16px", letterSpacing: "0.05em", color: "rgba(184,146,42,0.9)" }}>{"★".repeat(restaurant.rating)}{"☆".repeat(5 - restaurant.rating)}</span>
+                          <span style={{ fontFamily: SERIF_JP, fontSize: "12px", letterSpacing: "0.05em", color: "rgba(184,146,42,0.9)" }}>{"★".repeat(restaurant.rating)}{"☆".repeat(5 - restaurant.rating)}</span>
                           {restaurant.tagline && <span style={{ fontFamily: SERIF_JP, fontSize: "10px", letterSpacing: "0.3em", color: "rgba(248,244,236,0.45)", marginTop: "4px" }}>{restaurant.tagline}</span>}
                         </div>
                         <div style={{ flexShrink: 0, width: "1px", margin: "12px 13px", background: "linear-gradient(to bottom, transparent, rgba(184,146,42,0.35) 20%, rgba(184,146,42,0.35) 80%, transparent)" }} />
