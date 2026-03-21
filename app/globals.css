@@ -50,7 +50,7 @@ html, body {
   animation: shimmer 1.5s infinite;
 }
 
-/* ── Review text scroll ── */
+/* ── Review text scroll (desktop) ── */
 .review-text {
   overflow-y: auto;
   scrollbar-width: thin;
@@ -58,6 +58,14 @@ html, body {
 }
 .review-text::-webkit-scrollbar       { width: 3px; }
 .review-text::-webkit-scrollbar-thumb { background: #d4c5a9; border-radius: 2px; }
+
+/* ── Mobile vertical review scroll (横スクロール・スクロールバー非表示) ── */
+.review-mobile {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.review-mobile::-webkit-scrollbar { display: none; }
 
 /* ── Noise texture ── */
 .texture-overlay {

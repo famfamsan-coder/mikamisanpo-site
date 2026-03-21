@@ -922,24 +922,32 @@ export default function Home() {
                         </div>
                       )}
 
-                      {/* 縦書きコンテンツ — paddingBottom で Maps ボタンとの重なりを防ぐ */}
-                      <div style={{ position: "absolute", inset: 0, padding: "20px 18px 64px", display: "flex", flexDirection: "row-reverse", alignItems: "stretch", overflow: "hidden", zIndex: 2 }}>
-                        <div style={{ writingMode: "vertical-rl", textOrientation: "mixed", flexShrink: 0, display: "flex", flexDirection: "column", justifyContent: "center", paddingLeft: "4px", paddingTop: "36px" }}>
-                          <span style={{ fontFamily: SERIF_EN, fontStyle: "italic", fontSize: "10px", letterSpacing: "0.18em", color: "rgba(184,146,42,0.8)", marginBottom: "10px" }}>{restaurant.nameEn}</span>
-                          <span style={{ fontFamily: SERIF_JP, fontSize: "clamp(1.65rem, 6.5vw, 2.1rem)", fontWeight: 500, letterSpacing: "0.18em", lineHeight: 1.0, color: "rgba(255,252,244,0.96)" }}>{restaurant.name}</span>
+                      {/* 縦書きコンテンツ — 本文最優先レイアウト */}
+                      <div style={{ position: "absolute", inset: 0, padding: "20px 12px 64px", display: "flex", flexDirection: "row-reverse", alignItems: "stretch", overflow: "hidden", zIndex: 2 }}>
+
+                        {/* 店名列（コンパクト化） */}
+                        <div style={{ writingMode: "vertical-rl", textOrientation: "mixed", flexShrink: 0, display: "flex", flexDirection: "column", justifyContent: "center", paddingLeft: "2px", paddingTop: "36px" }}>
+                          <span style={{ fontFamily: SERIF_EN, fontStyle: "italic", fontSize: "9px", letterSpacing: "0.15em", color: "rgba(184,146,42,0.7)", marginBottom: "8px" }}>{restaurant.nameEn}</span>
+                          <span style={{ fontFamily: SERIF_JP, fontSize: "clamp(1.1rem, 4vw, 1.4rem)", fontWeight: 500, letterSpacing: "0.18em", lineHeight: 1.0, color: "rgba(255,252,244,0.96)" }}>{restaurant.name}</span>
                         </div>
-                        <div style={{ flexShrink: 0, width: "1px", margin: "12px 14px", background: "linear-gradient(to bottom, transparent, rgba(184,146,42,0.6) 20%, rgba(184,146,42,0.6) 80%, transparent)" }} />
-                        <div style={{ writingMode: "vertical-rl", textOrientation: "mixed", flexShrink: 0, display: "flex", flexDirection: "column", gap: "14px", paddingRight: "2px", justifyContent: "center" }}>
-                          <span style={{ fontFamily: SERIF_JP, fontSize: "11px", letterSpacing: "0.25em", color: "rgba(184,146,42,0.85)" }}>{restaurant.category}</span>
-                          <span style={{ fontFamily: SERIF_JP, fontSize: "12px", letterSpacing: "0.05em", color: "rgba(184,146,42,0.9)" }}>{"★".repeat(restaurant.rating)}{"☆".repeat(5 - restaurant.rating)}</span>
-                          {restaurant.tagline && <span style={{ fontFamily: SERIF_JP, fontSize: "10px", letterSpacing: "0.3em", color: "rgba(248,244,236,0.45)", marginTop: "4px" }}>{restaurant.tagline}</span>}
+
+                        <div style={{ flexShrink: 0, width: "1px", margin: "12px 8px", background: "linear-gradient(to bottom, transparent, rgba(184,146,42,0.6) 20%, rgba(184,146,42,0.6) 80%, transparent)" }} />
+
+                        {/* カテゴリ・評価列（タグライン省略・文字小） */}
+                        <div style={{ writingMode: "vertical-rl", textOrientation: "mixed", flexShrink: 0, display: "flex", flexDirection: "column", gap: "10px", paddingRight: "2px", justifyContent: "center" }}>
+                          <span style={{ fontFamily: SERIF_JP, fontSize: "10px", letterSpacing: "0.2em", color: "rgba(184,146,42,0.85)" }}>{restaurant.category}</span>
+                          <span style={{ fontFamily: SERIF_JP, fontSize: "10px", letterSpacing: "0.05em", color: "rgba(184,146,42,0.9)" }}>{"★".repeat(restaurant.rating)}{"☆".repeat(5 - restaurant.rating)}</span>
                         </div>
-                        <div style={{ flexShrink: 0, width: "1px", margin: "12px 13px", background: "linear-gradient(to bottom, transparent, rgba(184,146,42,0.35) 20%, rgba(184,146,42,0.35) 80%, transparent)" }} />
-                        <div style={{ writingMode: "vertical-rl", textOrientation: "mixed", flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-                          <span style={{ fontFamily: SERIF_JP, fontSize: "12px", lineHeight: 2.0, letterSpacing: "0.06em", color: "rgba(240,234,222,0.82)", flex: 1, overflow: "hidden" }}>{restaurant.review.split("\n\n")[0]}</span>
-                          <span style={{ fontFamily: SERIF_EN, fontStyle: "italic", fontSize: "10px", letterSpacing: "0.12em", color: "rgba(248,244,236,0.38)", marginTop: "14px", flexShrink: 0 }}>{restaurant.location}</span>
-                          <span style={{ fontFamily: SERIF_JP, fontSize: "10px", letterSpacing: "0.15em", color: "rgba(248,244,236,0.32)", marginTop: "10px", flexShrink: 0 }}>{formatDate(restaurant.date)}</span>
+
+                        <div style={{ flexShrink: 0, width: "1px", margin: "12px 8px", background: "linear-gradient(to bottom, transparent, rgba(184,146,42,0.35) 20%, rgba(184,146,42,0.35) 80%, transparent)" }} />
+
+                        {/* 本文列 — 全文表示・スクロール対応・画面の大半を占有 */}
+                        <div className="review-mobile" style={{ writingMode: "vertical-rl", textOrientation: "mixed", flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+                          <span style={{ fontFamily: SERIF_JP, fontSize: "12px", lineHeight: 2.0, letterSpacing: "0.06em", color: "rgba(240,234,222,0.82)", flexShrink: 0, whiteSpace: "pre-wrap" }}>{restaurant.review}</span>
+                          <span style={{ fontFamily: SERIF_EN, fontStyle: "italic", fontSize: "9px", letterSpacing: "0.12em", color: "rgba(248,244,236,0.32)", marginTop: "16px", flexShrink: 0 }}>{restaurant.location}</span>
+                          <span style={{ fontFamily: SERIF_JP, fontSize: "9px", letterSpacing: "0.12em", color: "rgba(248,244,236,0.26)", marginTop: "8px", flexShrink: 0 }}>{formatDate(restaurant.date)}</span>
                         </div>
+
                       </div>
 
                       <div style={{ position: "absolute", bottom: "14px", left: "14px", zIndex: 3 }}>
