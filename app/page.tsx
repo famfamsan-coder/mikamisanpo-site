@@ -907,12 +907,13 @@ export default function Home() {
                         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to left, rgba(16,14,12,0.82) 0%, rgba(16,14,12,0.50) 45%, rgba(16,14,12,0.62) 100%)" }} />
                       </div>
 
-                      <div style={{ position: "absolute", top: "14px", right: "14px", padding: "3px 9px", background: "rgba(248,244,236,0.12)", backdropFilter: "blur(6px)", border: "1px solid rgba(184,146,42,0.5)", zIndex: 3 }}>
+                      {/* カテゴリバッジ — モバイルは右下（Mapsボタンと反対側） */}
+                      <div style={{ position: "absolute", bottom: "14px", right: "14px", padding: "3px 9px", background: "rgba(248,244,236,0.12)", backdropFilter: "blur(6px)", border: "1px solid rgba(184,146,42,0.5)", zIndex: 3 }}>
                         <span style={{ fontFamily: SERIF_JP, fontSize: "10px", letterSpacing: "0.2em", color: "var(--gold)" }}>{restaurant.category}</span>
                       </div>
 
                       {restaurant.images.length > 1 && (
-                        <div style={{ position: "absolute", top: "46px", right: "14px", display: "flex", gap: "5px", zIndex: 3 }}>
+                        <div style={{ position: "absolute", top: "14px", right: "14px", display: "flex", gap: "5px", zIndex: 3 }}>
                           {restaurant.images.map((_, i) => (
                             <button key={i} onClick={() => { setImgLoaded(false); setImgIdx(i); }}
                               style={{ width: i === imgIdx ? "16px" : "6px", height: "6px", borderRadius: "9999px", background: i === imgIdx ? "var(--gold)" : "rgba(248,244,236,0.4)", border: "none", cursor: "pointer", padding: 0, transition: "width 0.3s, background 0.3s" }}
