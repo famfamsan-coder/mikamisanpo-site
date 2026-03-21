@@ -39,8 +39,8 @@ export function fromDb(row: DbRow) {
     date: row.visit_date ?? "",
     images: [
       ...(row.image_url ? [row.image_url] : []),
-      ...(row.extra_images ?? []),
-    ],
+      ...(Array.isArray(row.extra_images) ? row.extra_images : []),
+    ].filter((url): url is string => typeof url === "string" && url.trim().length > 0),
     imageAlt: `${row.name}の料理`,
     tagline: row.tagline ?? undefined,
     mapsUrl: row.maps_url ?? undefined,

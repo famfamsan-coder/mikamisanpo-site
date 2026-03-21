@@ -190,6 +190,14 @@ function FlexImage({
   src: string; alt: string; className?: string;
   style?: React.CSSProperties; onLoad?: () => void; priority?: boolean;
 }) {
+  const [hasError, setHasError] = useState(false);
+  if (!src || hasError) {
+    return (
+      <div style={{ position: "absolute", inset: 0, width: "100%", height: "100%", background: "rgba(184,146,42,0.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "11px", letterSpacing: "0.2em", color: "rgba(184,146,42,0.4)" }}>no photo</span>
+      </div>
+    );
+  }
   const isLocal = src.startsWith("blob:") || src.startsWith("data:");
   if (isLocal) {
     return (
@@ -197,12 +205,14 @@ function FlexImage({
       <img src={src} alt={alt} className={className}
         style={{ objectFit: "cover", position: "absolute", inset: 0, width: "100%", height: "100%", ...style }}
         onLoad={onLoad}
+        onError={() => setHasError(true)}
       />
     );
   }
   return (
     <NextImage src={src} alt={alt} fill sizes="(max-width: 768px) 100vw, 50vw"
       className={className} style={style} onLoad={onLoad} priority={priority}
+      onError={() => setHasError(true)}
     />
   );
 }
@@ -912,8 +922,8 @@ export default function Home() {
                         </div>
                       )}
 
-                      {/* 縦書きコンテンツ */}
-                      <div style={{ position: "absolute", inset: 0, padding: "20px 18px", display: "flex", flexDirection: "row-reverse", alignItems: "stretch", overflow: "hidden", zIndex: 2 }}>
+                      {/* 縦書きコンテンツ — paddingBottom で Maps ボタンとの重なりを防ぐ */}
+                      <div style={{ position: "absolute", inset: 0, padding: "20px 18px 64px", display: "flex", flexDirection: "row-reverse", alignItems: "stretch", overflow: "hidden", zIndex: 2 }}>
                         <div style={{ writingMode: "vertical-rl", textOrientation: "mixed", flexShrink: 0, display: "flex", flexDirection: "column", justifyContent: "center", paddingLeft: "4px", paddingTop: "36px" }}>
                           <span style={{ fontFamily: SERIF_EN, fontStyle: "italic", fontSize: "10px", letterSpacing: "0.18em", color: "rgba(184,146,42,0.8)", marginBottom: "10px" }}>{restaurant.nameEn}</span>
                           <span style={{ fontFamily: SERIF_JP, fontSize: "clamp(1.65rem, 6.5vw, 2.1rem)", fontWeight: 500, letterSpacing: "0.18em", lineHeight: 1.0, color: "rgba(255,252,244,0.96)" }}>{restaurant.name}</span>
